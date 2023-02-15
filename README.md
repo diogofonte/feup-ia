@@ -1,1 +1,1 @@
-# feup-ia
+# Artificial Intelligence - IA - FEUP
