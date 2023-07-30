@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Machine Learning Models for Cancer Data</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Machine Learning Models for Cancer Data</h1>
+
+    <section>
+        <h2>Data preprocessing</h2>
+        <div class="code">
+            #Removing the Outliers
+            <pre><code>
+from copy import deepcopy
+
+cancer_data_outliersClear = deepcopy(cancer_data)
+
+# Range to identify outliers
+threshold = 3
+
+
+# Loop through all columns in the DataFrame, excluding the diagnosis
+for column in cancer_data_outliersClear.loc[:, ~cancer_data_outliersClear.columns.isin(['diagnosis'])]:  
+    
+    # Mean and STD of the column
+    mean = cancer_data_outliersClear[column].mean()
+    st_deviation = cancer_data_outliersClear[column].std()
+
+    # Lower and Upper limits
+    lower_limit = mean - threshold * st_deviation
+    upper_limit = mean + threshold * st_deviation
+
+    # Remove outliers
+    #cancer_data_outliersClear = cancer_data_outliersClear.loc[(cancer_data_outliersClear[column] >= lower_limit) & (cancer_data_outliersClear[column] <= upper_limit)]
+
+
+#cancer_data_outliersClear.to_csv('Cancer_Data_OutlierClean.csv', index=False)
+
+sb.boxplot(x=cancer_data_outliersClear['concavity_worst'])
+            </code></pre>
+        </div>
+        <div class="result">
+            <h3>Conclusions:</h3>
+            <img src="histograms/concavity_worst_before.png" alt="concavity_worst Before Histogram" class="histogram">
+            <img src="histograms/concavity_worst_after.png" alt="concavity_worst After Histogram" class="histogram">
+            <p>
+                This is the example of one variable to show that the outliers have been removed (Not all of them though as sometimes if the supposed outlier is close enough, it may not be an outlier but actually an important piece of data), so now  we can start the classification.
+            </p>
+        </div>
+    </section>
+
+    <section>
+        <h2>Balancing the Dataset - SMOTE</h2>
+        <p>
+            The data was unbalanced as there were several more Benign cases than Malignent ones so we needed to fix it. To do this we used the SMOTE technique where we used the function fit_resample and then printed the result to guarantee that the diagnosis column is perfectly balanced (as all things should be).
+        </p>
+        <div class="code">
+            <pre><code>
+from imblearn.over_sampling import SMOTE
+
+# Separate the features and labels
+X = cancer_data_outliersClear.drop(['id', 'diagnosis'], axis=1).values
+y = cancer_data_outliersClear['diagnosis'].values
+
+# Apply SMOTE to balance the dataset
+smote = SMOTE(random_state=1)
+X_balanced, y_balanced = smote.fit_resample(X, y)
+
+# Check the class distribution after applying SMOTE
+unique_classes, class_counts = np.unique(y_balanced, return_counts=True)
+for cls, count in zip(unique_classes, class_counts):
+    print("Class {}: {}".format(cls, count))
+            </code></pre>
+        </div>
+        <div class="result">
+            <h3>Results:</h3>
+            <p>
+                Class B: 308
+            </p>
+            <p>
+                Class M: 308
+            </p>
+        </div>
+    </section>
+
+    <section>
+        <h2>Decision Tree Classifier</h2>
+        <div class="code">
+            <pre><code>
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+import time
+from sklearn.model_selection import cross_val_score
+import matplotlib.pyplot as plt
+
+# Split the data into training and test sets, stratified by the diagnosis column
+training_inputs, testing_inputs, training_labels, testing_labels = train_test_split(
+    cancer_data_merged.drop(['diagnosis'], axis=1).values, cancer_data_merged['diagnosis'].values,
+    test_size=0.25, stratify=cancer_data_merged['diagnosis'].values,random_state=1)
+
+# Create the decision tree classifier
+dtc = DecisionTreeClassifier(random_state=1)
+
+# Train the classifier on the training set and measure the training time
+start_time = time.time()
+dtc.fit(training_inputs, training_labels)
+training_time = time.time() - start_time
+
+# Predict the labels of the test set using the trained classifier
+predicted_labels = dtc.predict(testing_inputs)
+
+# Calculate the accuracy of the model on the test set
+accuracy = accuracy_score(testing_labels, predicted_labels)
+print("Decision Tree Classifier Accuracy: {:.2f}%".format(accuracy * 100))
+
+# Create the confusion matrix
+confusion_matrix = confusion_matrix(testing_labels, predicted_labels)
+print("Confusion Matrix:")
+print(confusion_matrix)
+
+# Calculate precision, recall, and F1 score
+precision = precision_score(testing_labels, predicted_labels, pos_label='M')
+recall = recall_score(testing_labels, predicted_labels, pos_label='M')
+f1 = f1_score(testing_labels, predicted_labels, pos_label='M')
+print("Precision: {:.2f}".format(precision))
+print("Recall: {:.2f}".format(recall))
+print("F1 Score: {:.2f}".format(f1))
+
+# Print the training time in seconds
+print("Training Time: {:.2f} seconds".format(training_time))
+
+# Perform cross-validation and plot the histogram of scores
+cv_scores = cross_val_score(dtc, X_balanced, y_balanced, cv=10)
+plt.hist(cv_scores)
+plt.title('Average Score: {}'.format(np.mean(cv_scores)))
+plt.show()
+            </code></pre>
+        </div>
+        <div class="result">
+            <h3>Accuracy:</h3> 81.90%
+            <h3>Confusion Matrix:</h3>
+            <table>
+                <tr>
+                <th></th>
+                <th>Predicted Benign</th>
+                <th>Predicted Malignant</th>
+                </tr>
+                <tr>
+                <th>Actual Benign</th>
+                <td>70</td>
+                <td>8</td>
+                </tr>
+                <tr>
+                <th>Actual Malignant</th>
+                <td>11</td>
+                <td>16</td>
+                </tr>
+            </table>
+            <h3>Precision: </h3>0.67
+            <h3>Recall: </h3>0.59
+            <h3>F1 Score: </h3>0.63
+            <h3>Training Time: </h3>0.01 seconds
+            <h3>Conclusions:</h3>
+            <img src="histograms/decision_tree.png" alt="Decision Tree Histogram" class="histogram">
+            <p>
+                The decision tree classifier can correctly predict the diagnostic (benign or malignant) for the majority of the samples in the testing set, as evidenced by its accuracy of 81.9%. However, it's crucial to take into account the particular context and application of cancer detection, since high accuracy alone could not be sufficient. False positives (FP) and false negatives (FN) in medical applications can both have serious repercussions.
+            </p>
+            <p>
+                The confusion matrix offers more information about the performance. It demonstrates that the classifier accurately recognized 16 cancer instances as true positives and 70 benign cases as true negatives. But it also incorrectly labeled 11 benign patients as malignant and 8 benign cases as malignant (false positives). When malignant cases are incorrectly diagnosed as benign, it can have grave consequences.
+            </p>
+            <p>
+                The graph shows that the scores from the cross validation were close together which means that our accuracy is not misleading.
+            </p>
+            <p>
+                The training time was quite fast, bellow 0.01 seconds in this case.
+            </p>
+        </div>
+    </section>
+
+    <section>
+        <h2>SVM Classifier</h2>
+        <div class="code">
+            <pre><code>
+from sklearn.model_selection import train_test_split
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+import time
+
+# Create a new dataframe without the 'id' column
+cancer_data_new = cancer_data_merged.drop(['id'], axis=1)
+
+# Split the data into training and testing sets
+all_inputs = cancer_data_new.drop(['diagnosis'], axis=1).values
+all_labels = cancer_data_new['diagnosis'].values
+training_inputs, testing_inputs, training_classes, testing_classes = train_test_split(
+    all_inputs, all_labels, test_size=0.25,random_state=1)
+
+# Create the SVM classifier
+svm_classifier = SVC(kernel='linear', random_state=1)
+
+# Train the SVM classifier on the training set and measure the training time
+start_time = time.time()
+svm_classifier.fit(training_inputs, training_classes)
+training_time = time.time() - start_time
+
+# Predict the classes of the testing set using the SVM classifier
+predictions = svm_classifier.predict(testing_inputs)
+
+# Compute the accuracy score of the SVM classifier
+accuracy = accuracy_score(testing_classes, predictions)
+print("SVM Classifier Accuracy: {:.2f}%".format(accuracy * 100))
+
+# Create the confusion matrix
+confusion_matrix = confusion_matrix(testing_classes, predictions)
+print("Confusion Matrix:")
+print(confusion_matrix)
+
+# Calculate precision, recall, and F1 score
+precision = precision_score(testing_classes, predictions, pos_label='M')
+recall = recall_score(testing_classes, predictions, pos_label='M')
+f1 = f1_score(testing_classes, predictions, pos_label='M')
+print("Precision: {:.2f}".format(precision))
+print("Recall: {:.2f}".format(recall))
+print("F1 Score: {:.2f}".format(f1))
+
+# Print the training time in seconds
+print("Training Time: {:.2f} seconds".format(training_time))
+
+# Perform cross-validation and plot the histogram of scores
+cv_scores = cross_val_score(dtc, all_inputs, all_labels, cv=10)
+plt.hist(cv_scores)
+plt.title('Average Score: {}'.format(np.mean(cv_scores)))
+plt.show()
+            </code></pre>
+        </div>
+        <div class="result">
+            <p><h3>Accuracy: 73.33%</h3></p>
+            <h3>Confusion Matrix:</h3>
+            <table>
+                <tr>
+                <th></th>
+                <th>Predicted Benign</th>
+                <th>Predicted Malignant</th>
+                </tr>
+                <tr>
+                <th>Actual Benign</th>
+                <td>76</td>
+                <td>0</td>
+                </tr>
+                <tr>
+                <th>Actual Malignant</th>
+                <td>28</td>
+                <td>1</td>
+                </tr>
+            </table>
+            <h3>Precision: </h3>1.00
+            <h3>Recall: </h3>0.03
+            <h3>F1 Score: </h3>0.07
+            <h3>Training Time: </h3>0.00 seconds
+            <h3>Conclusions:</h3>
+            <img src="histograms/support_vector_machine.png" alt="SVM Histogram" class="histogram">
+            <p>
+                On the merged data, the SVM classifier had an accuracy of 73.33%. This suggests that roughly 73.33% of the test samples had their diagnoses properly predicted by the classifier. However, we can see certain performance restrictions in the classifier when we examine the confusion matrix.
+            </p>
+            <p>
+                The 76 true negatives in the matrix and the confusion matrix demonstrate that the SVM classifier accurately detected all benign situations (true negatives). Nevertheless, it had trouble correctly predicting malignant cases, which led to a small number of true positives (1), as well as a large number of false negatives (28). This shows that the classifier had trouble differentiating between benign and malignant cases.
+            </p>
+            <p>
+                This case is a perfect example of how even though we have a result of perfect precision, it doesn't tell the full story as we have a recall of 0.03 and F1 score of 0.07 meaning that this model has trouble working with our set. This is evindence even more by the fact that the values of the cross validation shown in the graph are quite far from each other.
+            </p>
+            <p>
+                Despite also barely taking any time, just like the decision tree, this is by far our worst performing model.
+            </p>
+        </div>
+    </section>
+
+    <section>
+        <h2>Neural Network Classifier</h2>
+        <div class="code">
+            <pre><code>
+binary_cancer_data = cancer_data_merged.copy()
+binary_cancer_data['diagnosis'] = pd.factorize(binary_cancer_data['diagnosis'])[0]
+
+import tensorflow as tf
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import precision_score, recall_score, f1_score
+import time
+
+# Split the data into training and testing sets
+X = binary_cancer_data.drop(['id', 'diagnosis'], axis=1).values
+y = binary_cancer_data['diagnosis'].values
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=1)
+
+# Scale the data to improve training performance
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# Define the neural network architecture
+model = tf.keras.models.Sequential([
+    tf.keras.layers.Dense(64, activation='relu', input_shape=(X_train.shape[1],)),
+    tf.keras.layers.Dense(32, activation='relu'),
+    tf.keras.layers.Dense(1, activation='sigmoid')
+])
+
+# Compile the model
+model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+# Train the model and measure the time
+start_time = time.time()
+model.fit(X_train, y_train, epochs=50, validation_data=(X_test, y_test))
+end_time = time.time()
+
+# Predict the labels of the test set using the trained model
+y_pred = model.predict(X_test)
+y_pred_classes = (y_pred > 0.5).astype(int)
+
+# Calculate precision, recall, and F1 score
+precision = precision_score(y_test, y_pred_classes)
+recall = recall_score(y_test, y_pred_classes)
+f1 = f1_score(y_test, y_pred_classes)
+
+# Create the confusion matrix
+confusion_matrix = tf.math.confusion_matrix(y_test, y_pred_classes, num_classes=2)
+
+# Print the confusion matrix, precision, recall, F1 score, and training time
+print("Confusion Matrix:")
+print(confusion_matrix.numpy())
+print("Precision: {:.2f}".format(precision))
+print("Recall: {:.2f}".format(recall))
+print("F1 Score: {:.2f}".format(f1))
+print("Training Time: {:.2f} seconds".format(end_time - start_time))
+            </code></pre>
+        </div>
+        <div class="result">
+            <p><h3>Accuracy: </h3>90.48%</p>
+            <h3>Confusion Matrix:</h3>
+            <table>
+                <tr>
+                <th></th>
+                <th>Predicted Benign</th>
+                <th>Predicted Malignant</th>
+                </tr>
+                <tr>
+                <th>Actual Benign</th>
+                <td>22</td>
+                <td>7</td>
+                </tr>
+                <tr>
+                <th>Actual Malignant</th>
+                <td>3</td>
+                <td>73</td>
+                </tr>
+            </table>
+            <h3>Precision: </h3>0.91
+            <h3>Recall: </h3>0.96
+            <h3>F1 Score: </h3>0.94
+            <h3>Training Time: </h3>2.89 seconds
+            <h3>Conclusions:</h3>
+            <p>
+                The neural network classifier's accuracy on the dataset was 90.48%, demonstrating that it can reliably predict the diagnosis in most situations and this is by far our best model. Note that it uses our merged data as well.
+            </p>
+            <p>
+                A precision of 0.91 was shown by the classifier, demonstrating a low proportion of false positives. This means that 91% of the time, the classifier's predictions of a malignant diagnosis were accurate.
+            </p>
+            <p>
+                The neural network classifier successfully recognized a sizable fraction of malignant patients with a recall of 0.96. This high recall means that 96% of the actual malignant cases in the dataset were properly identified by the classifier.
+            </p>
+            <p>
+                The precision and recall-balancing F1 score was 0.94. This score provides an overall evaluation of the classifier's performance by accounting for both false positives and false negatives.
+            </p>
+            <p>
+                The confusion matrix also shows how good this model turned out as the number of false positives and false negatives is just 10 in total for both, which means that this neural network would be safe to use in cancer studies as it barely gives any false negatives that in our case are worse than false positives. Although both can be really bad, telling someone that they don't have cancer when they do can have deadly consequences.
+            </p>
+        </div>
+    </section>
+</body>
+</html>
